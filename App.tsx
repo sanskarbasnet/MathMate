@@ -114,7 +114,12 @@ export default function App() {
 
             const yValues = xValues.map((x) => {
               try {
-                const evalEquation = cleanEquation.replace(/x/g, x.toString());
+                // Convert the equation to a format that can be evaluated
+                // For example: "x^2 - 5x + 6 = 0" becomes "x*x - 5*x + 6"
+                const evalEquation = cleanEquation
+                  .replace(/x/g, x.toString())
+                  .replace(/\^/g, "**")
+                  .split("=")[0]; // Take only the left side of the equation
                 return new Function("return " + evalEquation)();
               } catch (error) {
                 console.error("Error evaluating point:", error);
