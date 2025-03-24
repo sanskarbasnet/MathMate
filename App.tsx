@@ -20,6 +20,7 @@ import MathJax from "react-native-mathjax";
 import { Camera } from "expo-camera";
 import { LineChart } from "react-native-chart-kit";
 import WebView from "react-native-webview";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
 interface Solution {
   steps: string[];
@@ -29,6 +30,14 @@ interface Solution {
 
 interface GraphData {
   equation: string;
+}
+
+interface HistoryItem {
+  id: string;
+  equation: string;
+  type: "solution" | "graph";
+  date: string;
+  data: Solution | GraphData;
 }
 
 export default function App() {
@@ -42,6 +51,16 @@ export default function App() {
   const [base64Image, setBase64Image] = useState<string>("");
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
   const webViewRef = useRef<WebView>(null);
+  const [history, setHistory] = useState<HistoryItem[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [isWebViewLoading, setIsWebViewLoading] = useState(true);
+  const [showSettings, setShowSettings] = useState(false);
+  const [highContrastMode, setHighContrastMode] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+  const [textSize, setTextSize] = useState<"normal" | "large" | "extraLarge">(
+    "normal"
+  );
+  const [activeTab, setActiveTab] = useState<"general" | "privacy">("general");
 
   React.useEffect(() => {
     (async () => {
@@ -49,6 +68,220 @@ export default function App() {
       setHasPermission(status === "granted");
     })();
   }, []);
+
+  useEffect(() => {
+    const loadHistory = async () => {
+      try {
+        const savedHistory = await AsyncStorage.getItem("mathmate_history");
+        if (savedHistory) {
+          setHistory(JSON.parse(savedHistory));
+        }
+      } catch (error) {
+        console.error("Error loading history:", error);
+      }
+    };
+
+    loadHistory();
+  }, []);
+
+  useEffect(() => {
+    console.log("showSolution state changed:", showSolution);
+  }, [showSolution]);
+
+  useEffect(() => {
+    console.log("solution state changed:", solution);
+  }, [solution]);
+
+  useEffect(() => {
+    console.log("showGraph state changed:", showGraph);
+  }, [showGraph]);
+
+  useEffect(() => {
+    console.log("graphData state changed:", graphData);
+  }, [graphData]);
+
+  // Add useEffect to load settings when app starts
+  useEffect(() => {
+    const loadSettings = async () => {
+      try {
+        const savedSettings = await AsyncStorage.getItem("mathmate_settings");
+        if (savedSettings) {
+          const settings = JSON.parse(savedSettings);
+          setHighContrastMode(settings.highContrastMode);
+          setDarkMode(settings.darkMode);
+          setTextSize(settings.textSize);
+        }
+      } catch (error) {
+        console.error("Error loading settings:", error);
+      }
+    };
+
+    loadSettings();
+  }, []);
+
+  // Add function to save settings
+  const saveSettings = async () => {
+    try {
+      const settings = {
+        highContrastMode,
+        darkMode,
+        textSize,
+      };
+      await AsyncStorage.setItem("mathmate_settings", JSON.stringify(settings));
+    } catch (error) {
+      console.error("Error saving settings:", error);
+    }
+  };
+
+  // Add useEffect to save settings when they change
+  useEffect(() => {
+    saveSettings();
+  }, [highContrastMode, darkMode, textSize]);
+
+  // Add function to get dynamic styles based on settings
+  const getDynamicStyles = () => {
+    const baseColors = {
+      background: darkMode ? "#1a1a1a" : "#ffffff",
+      text: darkMode ? "#ffffff" : "#333333",
+      secondaryText: darkMode ? "#cccccc" : "#666666",
+      card: darkMode ? "#2d2d2d" : "#f5f5f5",
+      border: darkMode ? "#404040" : "#eeeeee",
+    };
+
+    const contrastColors = highContrastMode
+      ? {
+          background: darkMode ? "#000000" : "#ffffff",
+          text: darkMode ? "#ffffff" : "#000000",
+          secondaryText: darkMode ? "#ffffff" : "#000000",
+          card: darkMode ? "#1a1a1a" : "#f0f0f0",
+          border: darkMode ? "#ffffff" : "#000000",
+        }
+      : baseColors;
+
+    const textSizes = {
+      normal: {
+        title: 24,
+        subtitle: 18,
+        body: 16,
+        small: 14,
+      },
+      large: {
+        title: 28,
+        subtitle: 22,
+        body: 20,
+        small: 16,
+      },
+      extraLarge: {
+        title: 32,
+        subtitle: 26,
+        body: 24,
+        small: 18,
+      },
+    };
+
+    return {
+      colors: contrastColors,
+      sizes: textSizes[textSize],
+    };
+  };
+
+  const dynamicStyles = getDynamicStyles();
+
+  // Update the styles object to use dynamic values
+  const currentStyles = StyleSheet.create({
+    ...styles,
+    container: {
+      ...styles.container,
+      backgroundColor: dynamicStyles.colors.background,
+    },
+    modalContent: {
+      ...styles.modalContent,
+      backgroundColor: dynamicStyles.colors.background,
+    },
+    modalTitle: {
+      ...styles.modalTitle,
+      color: dynamicStyles.colors.text,
+      fontSize: dynamicStyles.sizes.title,
+    },
+    sectionTitle: {
+      ...styles.sectionTitle,
+      color: dynamicStyles.colors.text,
+      fontSize: dynamicStyles.sizes.subtitle,
+    },
+    sectionText: {
+      ...styles.sectionText,
+      color: dynamicStyles.colors.secondaryText,
+      fontSize: dynamicStyles.sizes.body,
+    },
+    settingLabel: {
+      ...styles.settingLabel,
+      color: dynamicStyles.colors.text,
+      fontSize: dynamicStyles.sizes.body,
+    },
+    solutionCard: {
+      ...styles.solutionCard,
+      backgroundColor: dynamicStyles.colors.card,
+    },
+    solutionTitle: {
+      ...styles.solutionTitle,
+      color: dynamicStyles.colors.text,
+      fontSize: dynamicStyles.sizes.subtitle,
+    },
+    stepContainer: {
+      ...styles.stepContainer,
+      backgroundColor: dynamicStyles.colors.background,
+    },
+    historyItem: {
+      ...styles.historyItem,
+      backgroundColor: dynamicStyles.colors.card,
+    },
+    historyDate: {
+      ...styles.historyDate,
+      color: dynamicStyles.colors.secondaryText,
+      fontSize: dynamicStyles.sizes.small,
+    },
+    historyEquation: {
+      ...styles.historyEquation,
+      backgroundColor: dynamicStyles.colors.background,
+    },
+    modalHeader: {
+      ...styles.modalHeader,
+      borderBottomColor: dynamicStyles.colors.border,
+    },
+    tabContainer: {
+      ...styles.tabContainer,
+      borderBottomColor: dynamicStyles.colors.border,
+    },
+    tabText: {
+      ...styles.tabText,
+      color: dynamicStyles.colors.secondaryText,
+      fontSize: dynamicStyles.sizes.body,
+    },
+    activeTabText: {
+      ...styles.activeTabText,
+      color: "#007AFF",
+    },
+    logoHeader: {
+      position: "absolute",
+      top: 25,
+      left: 0,
+      right: 0,
+      height: 80,
+      backgroundColor: "transparent",
+      justifyContent: "center",
+      alignItems: "center",
+      zIndex: 2,
+    },
+    logoText: {
+      color: "white",
+      fontSize: 32,
+      fontWeight: "bold",
+      letterSpacing: 2,
+      textShadowColor: "rgba(0, 0, 0, 0.5)",
+      textShadowOffset: { width: 0, height: 1 },
+      textShadowRadius: 3,
+    },
+  });
 
   const handleSolve = async () => {
     try {
@@ -60,19 +293,42 @@ export default function App() {
         if (photo && photo.base64) {
           setLoadingMessage("Analyzing the image to extract the equation...");
           setBase64Image(photo.base64);
-          await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate processing
+          await new Promise((resolve) => setTimeout(resolve, 1500));
 
           setLoadingMessage("Processing the equation with advanced AI...");
-          await new Promise((resolve) => setTimeout(resolve, 1500)); // Simulate processing
+          await new Promise((resolve) => setTimeout(resolve, 1500));
 
           setLoadingMessage("Generating step-by-step solution...");
           const result = await analyzeAndSolveEquation(photo.base64);
+          console.log(
+            "Received solution result:",
+            JSON.stringify(result, null, 2)
+          );
+
+          if (!result) {
+            console.error("No result received from analyzeAndSolveEquation");
+            return;
+          }
 
           setLoadingMessage("Finalizing the solution...");
-          await new Promise((resolve) => setTimeout(resolve, 1000)); // Simulate processing
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+
+          console.log("Setting solution state with:", {
+            steps: result.steps,
+            finalAnswer: result.finalAnswer,
+            originalEquation: result.originalEquation,
+          });
 
           setSolution(result);
-          setShowSolution(true);
+
+          // Add a small delay before showing the modal
+          setTimeout(() => {
+            console.log("Setting showSolution to true");
+            setShowSolution(true);
+          }, 100);
+
+          // Save to history
+          await saveToHistory(result.originalEquation, "solution", result);
         } else {
           console.error("Failed to capture photo with base64 data");
         }
@@ -103,17 +359,24 @@ export default function App() {
 
           if (equation) {
             setLoadingMessage("Generating graph...");
-            // Clean the equation for Desmos
+            // Keep the LaTeX format for Desmos
             const cleanedEquation = equation
               .replace(/\$/g, "") // Remove LaTeX delimiters
-              .replace(/\\cdot/g, "*") // Replace LaTeX multiplication
-              .replace(/\\frac{([^}]*)}{([^}]*)}/, "($1)/($2)") // Convert fractions
-              .replace(/\^/, "**") // Convert exponents
               .trim();
 
             console.log("Cleaned equation for Desmos:", cleanedEquation);
-            setGraphData({ equation: cleanedEquation });
-            setShowGraph(true);
+            const graphData = { equation: cleanedEquation };
+            console.log("Setting graph data:", graphData);
+
+            // Add a small delay before setting states
+            setTimeout(() => {
+              setGraphData(graphData);
+              console.log("Setting showGraph to true");
+              setShowGraph(true);
+            }, 100);
+
+            // Save to history
+            await saveToHistory(equation, "graph", graphData);
           }
         }
       }
@@ -127,21 +390,54 @@ export default function App() {
   };
 
   const renderLatex = (latex: string) => {
-    return (
-      <MathJax
-        html={latex}
-        mathJaxOptions={{
-          messageStyle: "none",
-          extensions: ["tex2jax.js"],
-          jax: ["input/TeX", "output/HTML-CSS"],
-          tex2jax: {
-            inlineMath: [["$", "$"]],
-            displayMath: [["$$", "$$"]],
-          },
-          "HTML-CSS": { availableFonts: ["STIX"] },
-        }}
-      />
-    );
+    try {
+      console.log("Rendering LaTeX:", latex);
+      return (
+        <MathJax
+          html={latex}
+          mathJaxOptions={{
+            messageStyle: "none",
+            extensions: ["tex2jax.js"],
+            jax: ["input/TeX", "output/HTML-CSS"],
+            tex2jax: {
+              inlineMath: [["$", "$"]],
+              displayMath: [["$$", "$$"]],
+            },
+            "HTML-CSS": { availableFonts: ["STIX"] },
+          }}
+        />
+      );
+    } catch (error) {
+      console.error("Error rendering LaTeX:", error);
+      return <Text style={{ color: "red" }}>Error rendering equation</Text>;
+    }
+  };
+
+  const saveToHistory = async (
+    equation: string,
+    type: "solution" | "graph",
+    data: Solution | GraphData
+  ) => {
+    try {
+      const newItem: HistoryItem = {
+        id: Date.now().toString(),
+        equation,
+        type,
+        date: new Date().toLocaleString(),
+        data,
+      };
+
+      const updatedHistory = [...history, newItem];
+      setHistory(updatedHistory);
+
+      // Save to AsyncStorage
+      await AsyncStorage.setItem(
+        "mathmate_history",
+        JSON.stringify(updatedHistory)
+      );
+    } catch (error) {
+      console.error("Error saving to history:", error);
+    }
   };
 
   if (hasPermission === null) {
@@ -152,32 +448,43 @@ export default function App() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={currentStyles.container}>
       <StatusBar style="light" />
 
+      {/* Logo Header */}
+      <View style={currentStyles.logoHeader}>
+        <Text style={currentStyles.logoText}>MathMate</Text>
+      </View>
+
       {/* Camera View */}
-      <View style={styles.cameraContainer}>
+      <View style={currentStyles.cameraContainer}>
         <CameraViewComponent ref={cameraRef} />
       </View>
 
       {/* Bottom Buttons */}
-      <View style={styles.bottomContainer}>
+      <View style={currentStyles.bottomContainer}>
         {/* Settings Button */}
-        <TouchableOpacity style={styles.cornerButton} onPress={() => {}}>
+        <TouchableOpacity
+          style={currentStyles.cornerButton}
+          onPress={() => setShowSettings(true)}
+        >
           <Ionicons name="settings-outline" size={28} color="white" />
         </TouchableOpacity>
 
         {/* Main Action Buttons */}
-        <View style={styles.mainButtonsContainer}>
+        <View style={currentStyles.mainButtonsContainer}>
           <TouchableOpacity
-            style={[styles.mainButton, isProcessing && styles.buttonDisabled]}
+            style={[
+              currentStyles.mainButton,
+              isProcessing && currentStyles.buttonDisabled,
+            ]}
             onPress={handleSolve}
             disabled={isProcessing}
           >
             <Ionicons name="calculator-outline" size={32} color="white" />
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.mainButton, styles.graphButton]}
+            style={[currentStyles.mainButton, currentStyles.graphButton]}
             onPress={handleGraph}
           >
             <Ionicons name="analytics-outline" size={32} color="white" />
@@ -185,18 +492,23 @@ export default function App() {
         </View>
 
         {/* History Button */}
-        <TouchableOpacity style={styles.cornerButton} onPress={() => {}}>
+        <TouchableOpacity
+          style={currentStyles.cornerButton}
+          onPress={() => setShowHistory(true)}
+        >
           <Ionicons name="time-outline" size={28} color="white" />
         </TouchableOpacity>
       </View>
 
       {/* Loading Modal */}
       <Modal visible={isProcessing} transparent={true} animationType="fade">
-        <View style={styles.loadingContainer}>
-          <View style={styles.loadingContent}>
+        <View style={currentStyles.loadingContainer}>
+          <View style={currentStyles.loadingContent}>
             <ActivityIndicator size="large" color="#007AFF" />
-            <Text style={styles.loadingTitle}>Solving Your Equation</Text>
-            <Text style={styles.loadingMessage}>{loadingMessage}</Text>
+            <Text style={currentStyles.loadingTitle}>
+              Solving Your Equation
+            </Text>
+            <Text style={currentStyles.loadingMessage}>{loadingMessage}</Text>
           </View>
         </View>
       </Modal>
@@ -206,39 +518,49 @@ export default function App() {
         visible={showSolution}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowSolution(false)}
+        onRequestClose={() => {
+          console.log("Modal onRequestClose called");
+          setShowSolution(false);
+        }}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Solution</Text>
+        <View style={currentStyles.modalContainer}>
+          <View style={currentStyles.modalContent}>
+            <View style={currentStyles.modalHeader}>
+              <Text style={currentStyles.modalTitle}>Solution</Text>
               <TouchableOpacity
-                onPress={() => setShowSolution(false)}
-                style={styles.closeButton}
+                onPress={() => {
+                  console.log("Close button pressed");
+                  setShowSolution(false);
+                }}
+                style={currentStyles.closeButton}
               >
                 <Ionicons name="close" size={24} color="#333" />
               </TouchableOpacity>
             </View>
 
-            <ScrollView style={styles.solutionScroll}>
+            <ScrollView style={currentStyles.solutionScroll}>
               {solution && (
                 <>
-                  <View style={styles.solutionCard}>
-                    <Text style={styles.solutionTitle}>Original Equation:</Text>
+                  <View style={currentStyles.solutionCard}>
+                    <Text style={currentStyles.solutionTitle}>
+                      Original Equation:
+                    </Text>
                     {renderLatex(solution.originalEquation)}
                   </View>
 
-                  <View style={styles.solutionCard}>
-                    <Text style={styles.solutionTitle}>Steps:</Text>
+                  <View style={currentStyles.solutionCard}>
+                    <Text style={currentStyles.solutionTitle}>Steps:</Text>
                     {solution.steps.map((step, index) => (
-                      <View key={index} style={styles.stepContainer}>
+                      <View key={index} style={currentStyles.stepContainer}>
                         {renderLatex(step)}
                       </View>
                     ))}
                   </View>
 
-                  <View style={styles.solutionCard}>
-                    <Text style={styles.solutionTitle}>Final Answer:</Text>
+                  <View style={currentStyles.solutionCard}>
+                    <Text style={currentStyles.solutionTitle}>
+                      Final Answer:
+                    </Text>
                     {renderLatex(solution.finalAnswer)}
                   </View>
                 </>
@@ -253,32 +575,130 @@ export default function App() {
         visible={showGraph}
         animationType="slide"
         transparent={true}
-        onRequestClose={() => setShowGraph(false)}
+        onRequestClose={() => {
+          console.log("Graph modal onRequestClose called");
+          setShowGraph(false);
+        }}
       >
-        <View style={styles.modalContainer}>
-          <View style={styles.modalContent}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Graph</Text>
+        <View style={currentStyles.modalContainer}>
+          <View style={currentStyles.modalContent}>
+            <View style={currentStyles.modalHeader}>
+              <Text style={currentStyles.modalTitle}>Graph</Text>
               <TouchableOpacity
-                style={styles.closeButton}
-                onPress={() => setShowGraph(false)}
+                style={currentStyles.closeButton}
+                onPress={() => {
+                  console.log("Graph modal close button pressed");
+                  setShowGraph(false);
+                }}
               >
                 <Ionicons name="close" size={24} color="#333" />
               </TouchableOpacity>
             </View>
 
-            <View style={styles.graphContainer}>
+            <View style={currentStyles.graphContainer}>
+              {isWebViewLoading && (
+                <View style={currentStyles.webViewLoading}>
+                  <ActivityIndicator size="large" color="#007AFF" />
+                  <Text style={currentStyles.loadingText}>
+                    Loading graph...
+                  </Text>
+                </View>
+              )}
               <WebView
+                key={`${textSize}-${darkMode}-${highContrastMode}`}
                 ref={webViewRef}
                 source={{
                   html: `
                     <!DOCTYPE html>
                     <html>
                       <head>
+                        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
                         <script src="https://www.desmos.com/api/v1.7/calculator.js?apiKey=dcb31709b452b1cf9dc26972add0fda6"></script>
                         <style>
-                          html, body { margin: 0; padding: 0; height: 100%; }
-                          #calculator { width: 100%; height: 100%; }
+                          :root {
+                            --body-size: ${dynamicStyles.sizes.body}px;
+                            --small-size: ${dynamicStyles.sizes.small}px;
+                          }
+                          html, body { 
+                            margin: 0; 
+                            padding: 0; 
+                            height: 100%; 
+                            width: 100%;
+                            overflow: hidden;
+                            background-color: ${dynamicStyles.colors.background};
+                            font-size: var(--body-size);
+                            color: ${dynamicStyles.colors.text};
+                          }
+                          #calculator { 
+                            width: 100%; 
+                            height: 100%; 
+                          }
+                          .dcg-label,
+                          .dcg-expression-label,
+                          .dcg-mq-editable-field,
+                          .dcg-btn,
+                          .dcg-tooltip,
+                          .dcg-menu,
+                          .dcg-menu-item,
+                          .dcg-axis-label {
+                            font-size: var(--body-size) !important;
+                            color: ${dynamicStyles.colors.text} !important;
+                          }
+                          .dcg-axis-tick-label {
+                            font-size: var(--small-size) !important;
+                            color: ${dynamicStyles.colors.secondaryText} !important;
+                          }
+                          .dcg-expression {
+                            font-size: var(--body-size) !important;
+                          }
+                          .dcg-expression-label {
+                            font-size: var(--body-size) !important;
+                          }
+                          .dcg-mq-editable-field {
+                            font-size: var(--body-size) !important;
+                          }
+                          .dcg-btn {
+                            font-size: var(--body-size) !important;
+                          }
+                          .dcg-tooltip {
+                            font-size: var(--body-size) !important;
+                          }
+                          .dcg-menu {
+                            font-size: var(--body-size) !important;
+                          }
+                          .dcg-menu-item {
+                            font-size: var(--body-size) !important;
+                          }
+                          .dcg-axis-label {
+                            font-size: var(--body-size) !important;
+                          }
+                          .dcg-axis-tick-label {
+                            font-size: var(--small-size) !important;
+                          }
+                          .dcg-expression-item {
+                            font-size: var(--body-size) !important;
+                          }
+                          .dcg-expression-item .dcg-label {
+                            font-size: var(--body-size) !important;
+                          }
+                          .dcg-expression-item .dcg-mq-editable-field {
+                            font-size: var(--body-size) !important;
+                          }
+                          .dcg-expression-item .dcg-expression-label {
+                            font-size: var(--body-size) !important;
+                          }
+                          .dcg-expression-item .dcg-expression {
+                            font-size: var(--body-size) !important;
+                          }
+                          .dcg-expression-item .dcg-expression .dcg-label {
+                            font-size: var(--body-size) !important;
+                          }
+                          .dcg-expression-item .dcg-expression .dcg-mq-editable-field {
+                            font-size: var(--body-size) !important;
+                          }
+                          .dcg-expression-item .dcg-expression .dcg-expression-label {
+                            font-size: var(--body-size) !important;
+                          }
                         </style>
                       </head>
                       <body>
@@ -286,31 +706,334 @@ export default function App() {
                         <script>
                           var calculator = Desmos.GraphingCalculator(
                             document.getElementById('calculator'),
-                            { expressionsCollapsed: true }
+                            { 
+                              expressionsCollapsed: true,
+                              showGrid: true,
+                              showXAxis: true,
+                              showYAxis: true,
+                              xAxisLabel: 'x',
+                              yAxisLabel: 'y',
+                              fontSize: ${dynamicStyles.sizes.body},
+                              backgroundColor: '${dynamicStyles.colors.background}',
+                              textColor: '${dynamicStyles.colors.text}',
+                              gridColor: '${dynamicStyles.colors.border}',
+                              axisColor: '${dynamicStyles.colors.text}',
+                              labelColor: '${dynamicStyles.colors.text}'
+                            }
                           );
                           
                           // Listen for messages from React Native
                           window.addEventListener('message', function(event) {
-                            console.log('Received equation:', event.data);
-                            calculator.setExpression({
-                              id: 'graph1',
-                              latex: event.data
-                            });
+                            console.log('Received equation in WebView:', event.data);
+                            try {
+                              calculator.setExpression({
+                                id: 'graph1',
+                                latex: event.data
+                              });
+                              console.log('Successfully set expression in Desmos');
+                            } catch (error) {
+                              console.error('Error setting expression in Desmos:', error);
+                            }
                           });
                         </script>
                       </body>
                     </html>
                   `,
                 }}
-                style={styles.desmosContainer}
+                style={currentStyles.desmosContainer}
+                onLoadStart={() => {
+                  console.log("WebView started loading");
+                  setIsWebViewLoading(true);
+                }}
                 onLoadEnd={() => {
+                  console.log(
+                    "WebView loaded, sending equation:",
+                    graphData?.equation
+                  );
+                  setIsWebViewLoading(false);
                   if (graphData?.equation) {
                     // Send the equation to Desmos
                     webViewRef.current?.postMessage(graphData.equation);
                   }
                 }}
+                javaScriptEnabled={true}
+                domStorageEnabled={true}
+                startInLoadingState={true}
+                scalesPageToFit={true}
+                onError={(syntheticEvent) => {
+                  const { nativeEvent } = syntheticEvent;
+                  console.warn("WebView error: ", nativeEvent);
+                  setIsWebViewLoading(false);
+                }}
               />
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* History Modal */}
+      <Modal
+        visible={showHistory}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowHistory(false)}
+      >
+        <View style={currentStyles.modalContainer}>
+          <View style={currentStyles.modalContent}>
+            <View style={currentStyles.modalHeader}>
+              <Text style={currentStyles.modalTitle}>History</Text>
+              <TouchableOpacity
+                style={currentStyles.closeButton}
+                onPress={() => setShowHistory(false)}
+              >
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={currentStyles.historyScroll}>
+              {history.map((item) => (
+                <TouchableOpacity
+                  key={item.id}
+                  style={currentStyles.historyItem}
+                  onPress={() => {
+                    if (item.type === "solution") {
+                      setSolution(item.data as Solution);
+                      setShowSolution(true);
+                    } else {
+                      setGraphData(item.data as GraphData);
+                      setShowGraph(true);
+                    }
+                    setShowHistory(false);
+                  }}
+                >
+                  <View style={currentStyles.historyItemHeader}>
+                    <Ionicons
+                      name={
+                        item.type === "solution"
+                          ? "calculator-outline"
+                          : "analytics-outline"
+                      }
+                      size={24}
+                      color="#333"
+                    />
+                    <Text style={currentStyles.historyDate}>{item.date}</Text>
+                  </View>
+                  <View style={currentStyles.historyEquation}>
+                    {renderLatex(item.equation)}
+                  </View>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Settings Modal */}
+      <Modal
+        visible={showSettings}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setShowSettings(false)}
+      >
+        <View style={currentStyles.modalContainer}>
+          <View style={currentStyles.modalContent}>
+            <View style={currentStyles.modalHeader}>
+              <Text style={currentStyles.modalTitle}>Settings</Text>
+              <TouchableOpacity
+                style={currentStyles.closeButton}
+                onPress={() => setShowSettings(false)}
+              >
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={currentStyles.tabContainer}>
+              <TouchableOpacity
+                style={[
+                  currentStyles.tab,
+                  activeTab === "general" && currentStyles.activeTab,
+                ]}
+                onPress={() => setActiveTab("general")}
+              >
+                <Text
+                  style={[
+                    currentStyles.tabText,
+                    activeTab === "general" && currentStyles.activeTabText,
+                  ]}
+                >
+                  General
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  currentStyles.tab,
+                  activeTab === "privacy" && currentStyles.activeTab,
+                ]}
+                onPress={() => setActiveTab("privacy")}
+              >
+                <Text
+                  style={[
+                    currentStyles.tabText,
+                    activeTab === "privacy" && currentStyles.activeTabText,
+                  ]}
+                >
+                  Privacy & Security
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={currentStyles.settingsScroll}>
+              {activeTab === "general" ? (
+                <>
+                  <View style={currentStyles.section}>
+                    <Text style={currentStyles.sectionTitle}>
+                      About MathMate
+                    </Text>
+                    <Text style={currentStyles.sectionText}>
+                      MathMate is your personal math assistant that helps you
+                      solve equations and visualize mathematical concepts
+                      through graphs.
+                    </Text>
+                  </View>
+
+                  <View style={currentStyles.section}>
+                    <Text style={currentStyles.sectionTitle}>
+                      Accessibility
+                    </Text>
+                    <View style={currentStyles.settingItem}>
+                      <Text style={currentStyles.settingLabel}>
+                        High Contrast Mode
+                      </Text>
+                      <TouchableOpacity
+                        style={[
+                          currentStyles.toggle,
+                          highContrastMode && currentStyles.toggleActive,
+                        ]}
+                        onPress={() => setHighContrastMode(!highContrastMode)}
+                      >
+                        <View
+                          style={[
+                            currentStyles.toggleCircle,
+                            highContrastMode &&
+                              currentStyles.toggleCircleActive,
+                          ]}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                    <View style={currentStyles.settingItem}>
+                      <Text style={currentStyles.settingLabel}>Dark Mode</Text>
+                      <TouchableOpacity
+                        style={[
+                          currentStyles.toggle,
+                          darkMode && currentStyles.toggleActive,
+                        ]}
+                        onPress={() => setDarkMode(!darkMode)}
+                      >
+                        <View
+                          style={[
+                            currentStyles.toggleCircle,
+                            darkMode && currentStyles.toggleCircleActive,
+                          ]}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
+                  <View style={currentStyles.section}>
+                    <Text style={currentStyles.sectionTitle}>Text Size</Text>
+                    <View style={currentStyles.textSizeOptions}>
+                      <TouchableOpacity
+                        style={[
+                          currentStyles.textSizeButton,
+                          textSize === "normal" &&
+                            currentStyles.textSizeButtonActive,
+                        ]}
+                        onPress={() => setTextSize("normal")}
+                      >
+                        <Text
+                          style={[
+                            currentStyles.textSizeButtonText,
+                            textSize === "normal" &&
+                              currentStyles.textSizeButtonTextActive,
+                          ]}
+                        >
+                          Normal
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          currentStyles.textSizeButton,
+                          textSize === "large" &&
+                            currentStyles.textSizeButtonActive,
+                        ]}
+                        onPress={() => setTextSize("large")}
+                      >
+                        <Text
+                          style={[
+                            currentStyles.textSizeButtonText,
+                            textSize === "large" &&
+                              currentStyles.textSizeButtonTextActive,
+                          ]}
+                        >
+                          Large
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          currentStyles.textSizeButton,
+                          textSize === "extraLarge" &&
+                            currentStyles.textSizeButtonActive,
+                        ]}
+                        onPress={() => setTextSize("extraLarge")}
+                      >
+                        <Text
+                          style={[
+                            currentStyles.textSizeButtonText,
+                            textSize === "extraLarge" &&
+                              currentStyles.textSizeButtonTextActive,
+                          ]}
+                        >
+                          Extra Large
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </>
+              ) : (
+                <>
+                  <View style={currentStyles.section}>
+                    <Text style={currentStyles.sectionTitle}>
+                      Privacy Policy
+                    </Text>
+                    <Text style={currentStyles.sectionText}>
+                      MathMate respects your privacy. We only process
+                      mathematical equations and do not store any personal
+                      information. All calculations are performed using OpenAI.
+                    </Text>
+                  </View>
+
+                  <View style={currentStyles.section}>
+                    <Text style={currentStyles.sectionTitle}>
+                      Data Collection
+                    </Text>
+                    <Text style={currentStyles.sectionText}>
+                      We collect anonymous usage statistics to improve the app.
+                      This includes: • Number of equations solved • Types of
+                      equations processed • App performance metrics
+                    </Text>
+                  </View>
+
+                  <View style={currentStyles.section}>
+                    <Text style={currentStyles.sectionTitle}>Security</Text>
+                    <Text style={currentStyles.sectionText}>
+                      • All data is encrypted in transit • No personal
+                      information is stored • Regular security updates • Secure
+                      API communications
+                    </Text>
+                  </View>
+                </>
+              )}
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -373,15 +1096,16 @@ const styles = StyleSheet.create({
   modalContainer: {
     flex: 1,
     backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "center",
+    alignItems: "center",
   },
   modalContent: {
     backgroundColor: "white",
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+    borderRadius: 20,
     padding: 20,
-    height: "85%",
     width: "100%",
-    marginTop: "5%",
+    height: "100%",
+    marginTop: "10%",
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -412,12 +1136,14 @@ const styles = StyleSheet.create({
   },
   solutionScroll: {
     flex: 1,
+    width: "100%",
   },
   solutionCard: {
     backgroundColor: "#f5f5f5",
     borderRadius: 12,
     padding: 16,
     marginBottom: 16,
+    width: "100%",
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
@@ -438,6 +1164,7 @@ const styles = StyleSheet.create({
     padding: 12,
     backgroundColor: "white",
     borderRadius: 8,
+    width: "100%",
   },
   loadingContainer: {
     flex: 1,
@@ -478,6 +1205,24 @@ const styles = StyleSheet.create({
     flex: 1,
     width: "100%",
     height: "100%",
+    backgroundColor: "white",
+    position: "relative",
+  },
+  webViewLoading: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "white",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 1,
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    color: "#666",
   },
   desmosContainer: {
     flex: 1,
@@ -487,5 +1232,148 @@ const styles = StyleSheet.create({
   },
   graphButton: {
     backgroundColor: "#34C759",
+  },
+  historyScroll: {
+    flex: 1,
+    width: "100%",
+  },
+  historyItem: {
+    backgroundColor: "#f5f5f5",
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    width: "100%",
+  },
+  historyItemHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  historyDate: {
+    fontSize: 14,
+    color: "#666",
+  },
+  historyEquation: {
+    backgroundColor: "white",
+    padding: 12,
+    borderRadius: 8,
+    width: "100%",
+  },
+  tabContainer: {
+    flexDirection: "row",
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+    marginBottom: 20,
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 12,
+    alignItems: "center",
+  },
+  activeTab: {
+    borderBottomWidth: 2,
+    borderBottomColor: "#007AFF",
+  },
+  tabText: {
+    fontSize: 16,
+    color: "#666",
+  },
+  activeTabText: {
+    color: "#007AFF",
+    fontWeight: "600",
+  },
+  settingsScroll: {
+    flex: 1,
+    width: "100%",
+  },
+  section: {
+    marginBottom: 24,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 12,
+  },
+  sectionText: {
+    fontSize: 14,
+    color: "#666",
+    lineHeight: 20,
+  },
+  settingItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  settingLabel: {
+    fontSize: 16,
+    color: "#333",
+  },
+  toggle: {
+    width: 50,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: "#e0e0e0",
+    padding: 2,
+  },
+  toggleActive: {
+    backgroundColor: "#007AFF",
+  },
+  toggleCircle: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: "white",
+  },
+  toggleCircleActive: {
+    transform: [{ translateX: 22 }],
+  },
+  textSizeOptions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    gap: 8,
+  },
+  textSizeButton: {
+    flex: 1,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    backgroundColor: "#f5f5f5",
+    alignItems: "center",
+  },
+  textSizeButtonActive: {
+    backgroundColor: "#007AFF",
+  },
+  textSizeButtonText: {
+    fontSize: 14,
+    color: "#666",
+  },
+  textSizeButtonTextActive: {
+    color: "white",
+    fontWeight: "600",
+  },
+  logoHeader: {
+    position: "absolute",
+    top: 25,
+    left: 0,
+    right: 0,
+    height: 80,
+    backgroundColor: "transparent",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 2,
+  },
+  logoText: {
+    color: "white",
+    fontSize: 32,
+    fontWeight: "bold",
+    letterSpacing: 2,
+    textShadowColor: "rgba(0, 0, 0, 0.5)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 3,
   },
 });
