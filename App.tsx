@@ -281,6 +281,16 @@ export default function App() {
       textShadowOffset: { width: 0, height: 1 },
       textShadowRadius: 3,
     },
+    modalHeaderButtons: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    clearButton: {
+      padding: 8,
+      backgroundColor: "#f5f5f5",
+      borderRadius: 20,
+    },
   });
 
   const handleSolve = async () => {
@@ -437,6 +447,16 @@ export default function App() {
       );
     } catch (error) {
       console.error("Error saving to history:", error);
+    }
+  };
+
+  // Add clearHistory function
+  const clearHistory = async () => {
+    try {
+      await AsyncStorage.removeItem("mathmate_history");
+      setHistory([]);
+    } catch (error) {
+      console.error("Error clearing history:", error);
     }
   };
 
@@ -782,12 +802,24 @@ export default function App() {
           <View style={currentStyles.modalContent}>
             <View style={currentStyles.modalHeader}>
               <Text style={currentStyles.modalTitle}>History</Text>
-              <TouchableOpacity
-                style={currentStyles.closeButton}
-                onPress={() => setShowHistory(false)}
-              >
-                <Ionicons name="close" size={24} color="#333" />
-              </TouchableOpacity>
+              <View style={currentStyles.modalHeaderButtons}>
+                <TouchableOpacity
+                  style={[
+                    currentStyles.clearButton,
+                    history.length === 0 && currentStyles.buttonDisabled,
+                  ]}
+                  onPress={clearHistory}
+                  disabled={history.length === 0}
+                >
+                  <Ionicons name="trash-outline" size={24} color="#FF3B30" />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={currentStyles.closeButton}
+                  onPress={() => setShowHistory(false)}
+                >
+                  <Ionicons name="close" size={24} color="#333" />
+                </TouchableOpacity>
+              </View>
             </View>
 
             <ScrollView style={currentStyles.historyScroll}>
@@ -814,7 +846,7 @@ export default function App() {
                           : "analytics-outline"
                       }
                       size={24}
-                      color="#333"
+                      color={dynamicStyles.colors.text}
                     />
                     <Text style={currentStyles.historyDate}>{item.date}</Text>
                   </View>
@@ -1375,5 +1407,15 @@ const styles = StyleSheet.create({
     textShadowColor: "rgba(0, 0, 0, 0.5)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 3,
+  },
+  modalHeaderButtons: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  clearButton: {
+    padding: 8,
+    backgroundColor: "#f5f5f5",
+    borderRadius: 20,
   },
 });
