@@ -8,8 +8,9 @@ import {
   ScrollView,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { analyzeAndSolveEquation } from "../utils/openaiHelper";
+import { analyzeAndSolveEquation, MathMateError } from "../utils/openaiHelper";
 import MathJax from "react-native-mathjax";
+import ErrorModal from "../components/ErrorModal";
 
 interface Step {
   text?: string;
@@ -20,6 +21,10 @@ export default function SolverScreen() {
   const [equation, setEquation] = useState<string>("");
   const [solution, setSolution] = useState<Step[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<{ message: string; code: string } | null>(
+    null
+  );
+  const [showError, setShowError] = useState(false);
 
   const renderLatex = (latex: string) => {
     return (
@@ -39,10 +44,27 @@ export default function SolverScreen() {
     );
   };
 
+  const handleError = (error: unknown) => {
+    if (error instanceof MathMateError) {
+      setError({ message: error.message, code: error.code });
+    } else if (error instanceof Error) {
+      setError({ message: error.message, code: "UNKNOWN_ERROR" });
+    } else {
+      setError({
+        message: "An unexpected error occurred",
+        code: "UNKNOWN_ERROR",
+      });
+    }
+    setShowError(true);
+    setIsProcessing(false);
+  };
+
   const handleSolve = async () => {
     if (!equation.trim()) return;
 
     setIsProcessing(true);
+    setError(null);
+    setShowError(false);
     try {
       const result = await analyzeAndSolveEquation(equation);
       if (result) {
@@ -53,7 +75,7 @@ export default function SolverScreen() {
         ]);
       }
     } catch (error) {
-      console.error("Error solving equation:", error);
+      handleError(error);
     } finally {
       setIsProcessing(false);
     }
@@ -87,6 +109,12 @@ export default function SolverScreen() {
           </View>
         ))}
       </ScrollView>
+
+      <ErrorModal
+        visible={showError}
+        onClose={() => setShowError(false)}
+        error={error}
+      />
     </SafeAreaView>
   );
 }

@@ -15,6 +15,7 @@ import CameraViewComponent, { CameraViewRef } from "./components/CameraView";
 import {
   analyzeAndSolveEquation,
   extractEquationFromImage,
+  MathMateError,
 } from "./utils/openaiHelper";
 import MathJax from "react-native-mathjax";
 import { Camera } from "expo-camera";
@@ -30,6 +31,7 @@ interface Solution {
 
 interface GraphData {
   equation: string;
+  latexEquation: string;
 }
 
 interface HistoryItem {
@@ -38,6 +40,7 @@ interface HistoryItem {
   type: "solution" | "graph";
   date: string;
   data: Solution | GraphData;
+  isBookmarked: boolean;
 }
 
 export default function App() {
@@ -61,6 +64,11 @@ export default function App() {
     "normal"
   );
   const [activeTab, setActiveTab] = useState<"general" | "privacy">("general");
+  const [error, setError] = useState<{ message: string; code: string } | null>(
+    null
+  );
+  const [showError, setShowError] = useState(false);
+  const [showBookmarksOnly, setShowBookmarksOnly] = useState(false);
 
   React.useEffect(() => {
     (async () => {
@@ -291,10 +299,70 @@ export default function App() {
       backgroundColor: "#f5f5f5",
       borderRadius: 20,
     },
+    errorContent: {
+      flex: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 20,
+    },
+    errorMessage: {
+      fontSize: 18,
+      fontWeight: "600",
+      color: "#333",
+      textAlign: "center",
+      marginTop: 20,
+      marginBottom: 10,
+    },
+    errorSubtext: {
+      fontSize: 14,
+      color: "#666",
+      textAlign: "center",
+      marginTop: 10,
+      lineHeight: 20,
+    },
+    bookmarkButton: {
+      padding: 8,
+      backgroundColor: "#f5f5f5",
+      borderRadius: 20,
+    },
+    bookmarkButtonActive: {
+      backgroundColor: "#e3f2fd",
+    },
+    historyItemLeft: {
+      flexDirection: "row",
+      alignItems: "center",
+      gap: 8,
+    },
+    bookmarkIcon: {
+      padding: 4,
+    },
   });
+
+  // Add function to handle errors
+  const handleError = (error: unknown) => {
+    console.error("Error occurred:", error);
+    if (error instanceof MathMateError) {
+      setError({ message: error.message, code: error.code });
+    } else if (error instanceof Error) {
+      setError({ message: error.message, code: "UNKNOWN_ERROR" });
+    } else {
+      setError({
+        message: "An unexpected error occurred",
+        code: "UNKNOWN_ERROR",
+      });
+    }
+    setShowError(true);
+    setIsProcessing(false);
+    setLoadingMessage("");
+  };
 
   const handleSolve = async () => {
     try {
+      // Reset states before starting new problem
+      setSolution(null);
+      setShowSolution(false);
+      setError(null);
+      setShowError(false);
       setIsProcessing(true);
       setLoadingMessage("Taking a picture of your equation...");
 
@@ -316,8 +384,7 @@ export default function App() {
           );
 
           if (!result) {
-            console.error("No result received from analyzeAndSolveEquation");
-            return;
+            throw new Error("No result received from analyzeAndSolveEquation");
           }
 
           setLoadingMessage("Finalizing the solution...");
@@ -340,12 +407,11 @@ export default function App() {
           // Save to history
           await saveToHistory(result.originalEquation, "solution", result);
         } else {
-          console.error("Failed to capture photo with base64 data");
+          throw new Error("Failed to capture photo with base64 data");
         }
       }
     } catch (error) {
-      console.error("Error solving equation:", error);
-      setLoadingMessage("Error solving equation");
+      handleError(error);
     } finally {
       setIsProcessing(false);
       setLoadingMessage("");
@@ -354,6 +420,11 @@ export default function App() {
 
   const handleGraph = async () => {
     try {
+      // Reset states before starting new problem
+      setGraphData(null);
+      setShowGraph(false);
+      setError(null);
+      setShowError(false);
       setIsProcessing(true);
       setLoadingMessage("Taking a picture of your equation...");
 
@@ -369,13 +440,16 @@ export default function App() {
 
           if (equation) {
             setLoadingMessage("Generating graph...");
-            // Keep the LaTeX format for Desmos
-            const cleanedEquation = equation
-              .replace(/\$/g, "") // Remove LaTeX delimiters
-              .trim();
+            // Keep the LaTeX format for display
+            const latexEquation = equation;
+            // Remove LaTeX delimiters for Desmos
+            const cleanedEquation = equation.replace(/\$/g, "").trim();
 
             console.log("Cleaned equation for Desmos:", cleanedEquation);
-            const graphData = { equation: cleanedEquation };
+            const graphData = {
+              equation: cleanedEquation,
+              latexEquation: latexEquation,
+            };
             console.log("Setting graph data:", graphData);
 
             // Add a small delay before setting states
@@ -391,8 +465,7 @@ export default function App() {
         }
       }
     } catch (error) {
-      console.error("Error generating graph:", error);
-      setLoadingMessage("Error generating graph");
+      handleError(error);
     } finally {
       setIsProcessing(false);
       setLoadingMessage("");
@@ -435,6 +508,7 @@ export default function App() {
         type,
         date: new Date().toLocaleString(),
         data,
+        isBookmarked: false,
       };
 
       const updatedHistory = [...history, newItem];
@@ -447,6 +521,21 @@ export default function App() {
       );
     } catch (error) {
       console.error("Error saving to history:", error);
+    }
+  };
+
+  const toggleBookmark = async (id: string) => {
+    try {
+      const updatedHistory = history.map((item) =>
+        item.id === id ? { ...item, isBookmarked: !item.isBookmarked } : item
+      );
+      setHistory(updatedHistory);
+      await AsyncStorage.setItem(
+        "mathmate_history",
+        JSON.stringify(updatedHistory)
+      );
+    } catch (error) {
+      console.error("Error toggling bookmark:", error);
     }
   };
 
@@ -622,6 +711,14 @@ export default function App() {
                   <Text style={currentStyles.loadingText}>
                     Loading graph...
                   </Text>
+                </View>
+              )}
+              {graphData && (
+                <View style={currentStyles.solutionCard}>
+                  <Text style={currentStyles.solutionTitle}>
+                    Original Equation:
+                  </Text>
+                  {renderLatex(graphData.latexEquation)}
                 </View>
               )}
               <WebView
@@ -805,6 +902,19 @@ export default function App() {
               <View style={currentStyles.modalHeaderButtons}>
                 <TouchableOpacity
                   style={[
+                    currentStyles.bookmarkButton,
+                    showBookmarksOnly && currentStyles.bookmarkButtonActive,
+                  ]}
+                  onPress={() => setShowBookmarksOnly(!showBookmarksOnly)}
+                >
+                  <Ionicons
+                    name={showBookmarksOnly ? "bookmark" : "bookmark-outline"}
+                    size={24}
+                    color={showBookmarksOnly ? "#007AFF" : "#333"}
+                  />
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
                     currentStyles.clearButton,
                     history.length === 0 && currentStyles.buttonDisabled,
                   ]}
@@ -823,38 +933,58 @@ export default function App() {
             </View>
 
             <ScrollView style={currentStyles.historyScroll}>
-              {history.map((item) => (
-                <TouchableOpacity
-                  key={item.id}
-                  style={currentStyles.historyItem}
-                  onPress={() => {
-                    if (item.type === "solution") {
-                      setSolution(item.data as Solution);
-                      setShowSolution(true);
-                    } else {
-                      setGraphData(item.data as GraphData);
-                      setShowGraph(true);
-                    }
-                    setShowHistory(false);
-                  }}
-                >
-                  <View style={currentStyles.historyItemHeader}>
-                    <Ionicons
-                      name={
-                        item.type === "solution"
-                          ? "calculator-outline"
-                          : "analytics-outline"
+              {history
+                .filter((item) => !showBookmarksOnly || item.isBookmarked)
+                .map((item) => (
+                  <TouchableOpacity
+                    key={item.id}
+                    style={currentStyles.historyItem}
+                    onPress={() => {
+                      if (item.type === "solution") {
+                        setSolution(item.data as Solution);
+                        setShowSolution(true);
+                      } else {
+                        setGraphData(item.data as GraphData);
+                        setShowGraph(true);
                       }
-                      size={24}
-                      color={dynamicStyles.colors.text}
-                    />
-                    <Text style={currentStyles.historyDate}>{item.date}</Text>
-                  </View>
-                  <View style={currentStyles.historyEquation}>
-                    {renderLatex(item.equation)}
-                  </View>
-                </TouchableOpacity>
-              ))}
+                      setShowHistory(false);
+                    }}
+                  >
+                    <View style={currentStyles.historyItemHeader}>
+                      <View style={currentStyles.historyItemLeft}>
+                        <Ionicons
+                          name={
+                            item.type === "solution"
+                              ? "calculator-outline"
+                              : "analytics-outline"
+                          }
+                          size={24}
+                          color={dynamicStyles.colors.text}
+                        />
+                        <Text style={currentStyles.historyDate}>
+                          {item.date}
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={currentStyles.bookmarkIcon}
+                        onPress={() => toggleBookmark(item.id)}
+                      >
+                        <Ionicons
+                          name={
+                            item.isBookmarked ? "bookmark" : "bookmark-outline"
+                          }
+                          size={24}
+                          color={item.isBookmarked ? "#007AFF" : "#666"}
+                        />
+                      </TouchableOpacity>
+                    </View>
+                    <View style={currentStyles.historyEquation}>
+                      {item.type === "solution"
+                        ? renderLatex((item.data as Solution).originalEquation)
+                        : renderLatex((item.data as GraphData).latexEquation)}
+                    </View>
+                  </TouchableOpacity>
+                ))}
             </ScrollView>
           </View>
         </View>
@@ -1066,6 +1196,67 @@ export default function App() {
                 </>
               )}
             </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Error Modal */}
+      <Modal
+        visible={showError}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={() => setShowError(false)}
+      >
+        <View style={currentStyles.modalContainer}>
+          <View style={[currentStyles.modalContent, { maxWidth: "80%" }]}>
+            <View style={currentStyles.modalHeader}>
+              <Text style={[currentStyles.modalTitle, { color: "#FF3B30" }]}>
+                Error
+              </Text>
+              <TouchableOpacity
+                style={currentStyles.closeButton}
+                onPress={() => setShowError(false)}
+              >
+                <Ionicons name="close" size={24} color="#333" />
+              </TouchableOpacity>
+            </View>
+
+            <View style={currentStyles.errorContent}>
+              <Ionicons name="alert-circle" size={48} color="#FF3B30" />
+              <Text style={currentStyles.errorMessage}>
+                {error?.message || "An unexpected error occurred"}
+              </Text>
+              {error?.code === "NO_INTERNET" && (
+                <Text style={currentStyles.errorSubtext}>
+                  Please check your internet connection and try again.
+                </Text>
+              )}
+              {error?.code === "INVALID_API_KEY" && (
+                <Text style={currentStyles.errorSubtext}>
+                  Please check your API key configuration.
+                </Text>
+              )}
+              {error?.code === "RATE_LIMIT" && (
+                <Text style={currentStyles.errorSubtext}>
+                  Please wait a moment before trying again.
+                </Text>
+              )}
+              {error?.code === "EXTRACTION_FAILED" && (
+                <Text style={currentStyles.errorSubtext}>
+                  Please try taking a clearer picture of the equation.
+                </Text>
+              )}
+              {error?.code === "SOLUTION_FAILED" && (
+                <Text style={currentStyles.errorSubtext}>
+                  We couldn't generate a solution. Please try again.
+                </Text>
+              )}
+              {error?.code === "INVALID_SOLUTION" && (
+                <Text style={currentStyles.errorSubtext}>
+                  The solution generated was invalid. Please try again.
+                </Text>
+              )}
+            </View>
           </View>
         </View>
       </Modal>
@@ -1417,5 +1608,42 @@ const styles = StyleSheet.create({
     padding: 8,
     backgroundColor: "#f5f5f5",
     borderRadius: 20,
+  },
+  errorContent: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
+  errorMessage: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
+    textAlign: "center",
+    marginTop: 20,
+    marginBottom: 10,
+  },
+  errorSubtext: {
+    fontSize: 14,
+    color: "#666",
+    textAlign: "center",
+    marginTop: 10,
+    lineHeight: 20,
+  },
+  bookmarkButton: {
+    padding: 8,
+    backgroundColor: "#f5f5f5",
+    borderRadius: 20,
+  },
+  bookmarkButtonActive: {
+    backgroundColor: "#e3f2fd",
+  },
+  historyItemLeft: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  bookmarkIcon: {
+    padding: 4,
   },
 });

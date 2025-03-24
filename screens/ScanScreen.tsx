@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from "react";
 import { StyleSheet, View, Text, TouchableOpacity } from "react-native";
 import { CameraView, useCameraPermissions } from "expo-camera";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { analyzeAndSolveEquation } from "../utils/openaiHelper";
+import { analyzeAndSolveEquation, MathMateError } from "../utils/openaiHelper";
+import ErrorModal from "../components/ErrorModal";
 
 interface ScanResult {
   steps: string[];
@@ -16,6 +17,10 @@ export default function ScanScreen() {
   const cameraRef = useRef<any>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [result, setResult] = useState<ScanResult | null>(null);
+  const [error, setError] = useState<{ message: string; code: string } | null>(
+    null
+  );
+  const [showError, setShowError] = useState(false);
 
   useEffect(() => {
     if (!permission?.granted) {
@@ -23,10 +28,27 @@ export default function ScanScreen() {
     }
   }, [permission]);
 
+  const handleError = (error: unknown) => {
+    if (error instanceof MathMateError) {
+      setError({ message: error.message, code: error.code });
+    } else if (error instanceof Error) {
+      setError({ message: error.message, code: "UNKNOWN_ERROR" });
+    } else {
+      setError({
+        message: "An unexpected error occurred",
+        code: "UNKNOWN_ERROR",
+      });
+    }
+    setShowError(true);
+    setIsProcessing(false);
+  };
+
   const handleCapture = async () => {
     if (!cameraRef.current || isProcessing) return;
 
     setIsProcessing(true);
+    setError(null);
+    setShowError(false);
     try {
       const photo = await cameraRef.current.takePictureAsync({
         quality: 1,
@@ -38,7 +60,7 @@ export default function ScanScreen() {
         setResult(solution);
       }
     } catch (error) {
-      console.error("Error processing image:", error);
+      handleError(error);
     } finally {
       setIsProcessing(false);
       setCameraVisible(false);
@@ -118,6 +140,12 @@ export default function ScanScreen() {
           </CameraView>
         </View>
       )}
+
+      <ErrorModal
+        visible={showError}
+        onClose={() => setShowError(false)}
+        error={error}
+      />
     </SafeAreaView>
   );
 }
