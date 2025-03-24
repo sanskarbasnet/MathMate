@@ -20,6 +20,7 @@ export async function analyzeAndSolveEquation(
   base64Image: string
 ): Promise<SolutionResult> {
   try {
+    console.log("Starting analyzeAndSolveEquation...");
     // First, use GPT-4 Vision to analyze the image and extract the equation
     const visionResponse = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -44,6 +45,8 @@ export async function analyzeAndSolveEquation(
     });
 
     const equation = visionResponse.choices[0]?.message?.content || "";
+    console.log("Raw equation from vision:", equation);
+
     // Clean up the equation: remove double $$ and ensure single $, trim whitespace
     const cleanedEquation = equation
       .trim()
@@ -51,7 +54,7 @@ export async function analyzeAndSolveEquation(
       .replace(/^\$|\$$/g, "")
       .trim();
     const formattedEquation = `$${cleanedEquation}$`;
-    console.log("Extracted equation:", formattedEquation);
+    console.log("Formatted equation:", formattedEquation);
 
     // Now, use GPT-4 to solve the equation step by step with detailed explanations
     const solutionResponse = await openai.chat.completions.create({
@@ -87,11 +90,11 @@ Example of good explanation:
     });
 
     const solution = solutionResponse.choices[0]?.message?.content || "";
-    console.log("Solution response:", solution);
+    console.log("Raw solution response:", solution);
 
     // Parse the solution into steps and final answer
     const steps: string[] = [];
-    const lines = solution.split("\n").filter((line) => line.trim().length > 0); // Remove empty lines
+    const lines = solution.split("\n").filter((line) => line.trim().length > 0);
     let currentStep = "";
     let finalAnswer = "";
     let isCollectingFinalAnswer = false;
@@ -118,7 +121,6 @@ Example of good explanation:
         finalAnswer = line.split(": ")[1];
         isCollectingFinalAnswer = true;
       } else if (line && !line.startsWith("Example")) {
-        // Handle multi-line equations by checking if the line contains a $ symbol
         const shouldAddNewline = line.includes("$") ? " " : " ";
         if (isInitialExplanation) {
           if (!currentStep) {
@@ -149,15 +151,14 @@ Example of good explanation:
       finalAnswer = "No solution found";
     }
 
-    // Log the parsed results for debugging
-    console.log("Parsed steps:", steps);
-    console.log("Final answer:", finalAnswer);
-
-    return {
+    const result = {
       steps,
       finalAnswer: finalAnswer.trim(),
       originalEquation: formattedEquation,
     };
+
+    console.log("Final parsed result:", JSON.stringify(result, null, 2));
+    return result;
   } catch (error) {
     console.error("Error in analyzeAndSolveEquation:", error);
     throw new Error("Failed to analyze and solve equation");
@@ -197,7 +198,7 @@ export async function extractEquationFromImage(
       .replace(/\$\$/g, "$")
       .replace(/^\$|\$$/g, "")
       .trim();
-      console.log("Extracted equation:", cleanedEquation);
+    console.log("Extracted equation:", cleanedEquation);
     return `$${cleanedEquation}$`;
   } catch (error) {
     console.error("Error extracting equation:", error);
