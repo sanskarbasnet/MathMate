@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useEffect } from "react";
 import {
   View,
   TouchableOpacity,
@@ -19,6 +19,7 @@ import {
 import MathJax from "react-native-mathjax";
 import { Camera } from "expo-camera";
 import { LineChart } from "react-native-chart-kit";
+import WebView from "react-native-webview";
 
 interface Solution {
   steps: string[];
@@ -27,12 +28,7 @@ interface Solution {
 }
 
 interface GraphData {
-  labels: string[];
-  datasets: {
-    data: number[];
-    color: (opacity: number) => string;
-    strokeWidth: number;
-  }[];
+  equation: string;
 }
 
 export default function App() {
@@ -45,6 +41,7 @@ export default function App() {
   const [graphData, setGraphData] = useState<GraphData | null>(null);
   const [base64Image, setBase64Image] = useState<string>("");
   const [hasPermission, setHasPermission] = useState<boolean | null>(null);
+  const webViewRef = useRef<WebView>(null);
 
   React.useEffect(() => {
     (async () => {
@@ -106,38 +103,16 @@ export default function App() {
 
           if (equation) {
             setLoadingMessage("Generating graph...");
-            await new Promise((resolve) => setTimeout(resolve, 1000));
+            // Clean the equation for Desmos
+            const cleanedEquation = equation
+              .replace(/\$/g, "") // Remove LaTeX delimiters
+              .replace(/\\cdot/g, "*") // Replace LaTeX multiplication
+              .replace(/\\frac{([^}]*)}{([^}]*)}/, "($1)/($2)") // Convert fractions
+              .replace(/\^/, "**") // Convert exponents
+              .trim();
 
-            // Generate points for the graph
-            const cleanEquation = equation.replace(/[$\$]/g, "");
-            const xValues = Array.from({ length: 21 }, (_, i) => i - 10);
-
-            const yValues = xValues.map((x) => {
-              try {
-                // Convert the equation to a format that can be evaluated
-                // For example: "x^2 - 5x + 6 = 0" becomes "x*x - 5*x + 6"
-                const evalEquation = cleanEquation
-                  .replace(/x/g, x.toString())
-                  .replace(/\^/g, "**")
-                  .split("=")[0]; // Take only the left side of the equation
-                return new Function("return " + evalEquation)();
-              } catch (error) {
-                console.error("Error evaluating point:", error);
-                return 0;
-              }
-            });
-
-            setGraphData({
-              labels: xValues.map((x) => x.toString()),
-              datasets: [
-                {
-                  data: yValues,
-                  color: (opacity = 1) => `rgba(0, 122, 255, ${opacity})`,
-                  strokeWidth: 2,
-                },
-              ],
-            });
-
+            console.log("Cleaned equation for Desmos:", cleanedEquation);
+            setGraphData({ equation: cleanedEquation });
             setShowGraph(true);
           }
         }
@@ -293,25 +268,48 @@ export default function App() {
             </View>
 
             <View style={styles.graphContainer}>
-              {graphData && (
-                <LineChart
-                  data={graphData}
-                  width={Dimensions.get("window").width - 40}
-                  height={300}
-                  chartConfig={{
-                    backgroundColor: "#ffffff",
-                    backgroundGradientFrom: "#ffffff",
-                    backgroundGradientTo: "#ffffff",
-                    decimalPlaces: 2,
-                    color: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                    style: {
-                      borderRadius: 16,
-                    },
-                  }}
-                  bezier
-                  style={styles.chart}
-                />
-              )}
+              <WebView
+                ref={webViewRef}
+                source={{
+                  html: `
+                    <!DOCTYPE html>
+                    <html>
+                      <head>
+                        <script src="https://www.desmos.com/api/v1.7/calculator.js?apiKey=dcb31709b452b1cf9dc26972add0fda6"></script>
+                        <style>
+                          html, body { margin: 0; padding: 0; height: 100%; }
+                          #calculator { width: 100%; height: 100%; }
+                        </style>
+                      </head>
+                      <body>
+                        <div id="calculator"></div>
+                        <script>
+                          var calculator = Desmos.GraphingCalculator(
+                            document.getElementById('calculator'),
+                            { expressionsCollapsed: true }
+                          );
+                          
+                          // Listen for messages from React Native
+                          window.addEventListener('message', function(event) {
+                            console.log('Received equation:', event.data);
+                            calculator.setExpression({
+                              id: 'graph1',
+                              latex: event.data
+                            });
+                          });
+                        </script>
+                      </body>
+                    </html>
+                  `,
+                }}
+                style={styles.desmosContainer}
+                onLoadEnd={() => {
+                  if (graphData?.equation) {
+                    // Send the equation to Desmos
+                    webViewRef.current?.postMessage(graphData.equation);
+                  }
+                }}
+              />
             </View>
           </View>
         </View>
@@ -478,13 +476,14 @@ const styles = StyleSheet.create({
   },
   graphContainer: {
     flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    padding: 20,
+    width: "100%",
+    height: "100%",
   },
-  chart: {
-    marginVertical: 8,
-    borderRadius: 16,
+  desmosContainer: {
+    flex: 1,
+    width: "100%",
+    height: "100%",
+    backgroundColor: "white",
   },
   graphButton: {
     backgroundColor: "#34C759",
